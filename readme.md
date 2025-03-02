@@ -72,4 +72,4 @@ Proyek ini dilisensikan di bawah [MIT License](LICENSE).
 ## Kontak
 Jika ada pertanyaan atau saran, silakan buka issue atau hubungi saya di [bimaj0206@gmail.com](mailto:bimaj0206@gmail.com).
 
-atau dapat hubungi saya melalui whatsapp [082254044783][https://wa.me/6282254044783]
+atau dapat hubungi saya melalui whatsapp [082254044783](https://wa.me/6282254044783)
