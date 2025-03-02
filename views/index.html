@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat App</title>
+    <!-- Tambahkan Tailwind CSS dari CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Custom styles untuk scroll dan elemen tertentu */
+      #chatbox::-webkit-scrollbar {
+        width: 8px;
+      }
+      #chatbox::-webkit-scrollbar-thumb {
+        background-color: #a0aec0;
+        border-radius: 4px;
+      }
+      #chatbox::-webkit-scrollbar-track {
+        background: #edf2f7;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl bg-white rounded-xl shadow-lg p-6">
+      <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Chat App</h2>
+      
+      <!-- Login/Register Form -->
+      <div id="auth-container" class="space-y-4">
+        <div class="flex space-x-4">
+          <input type="text" id="username" placeholder="Username" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="password" id="password" placeholder="Password" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div class="flex space-x-4">
+          <button onclick="register()" class="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Register</button>
+          <button onclick="login()" class="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">Login</button>
+        </div>
+      </div>
+      
+      <!-- Status -->
+      <p id="status" class="text-center text-green-600 font-semibold mt-2"></p>
+      
+      <!-- Chat Interface -->
+      <div id="chat-container" class="space-y-4 hidden">
+        <!-- Daftar Pengguna Online -->
+        <div id="online-users" class="flex items-center justify-between bg-gray-100 p-3 rounded-lg">
+          <span class="text-gray-700">Pengguna Online:</span>
+          <span class="text-green-600 font-semibold"></span>
+        </div>
+        
+        <!-- Chatbox -->
+        <div id="chatbox" class="h-96 bg-gray-50 p-4 rounded-lg overflow-y-auto border border-gray-200 space-y-3"></div>
+        
+        <!-- Chat Form -->
+        <div class="space-y-4">
+          <div class="flex space-x-4">
+            <input type="text" id="message" placeholder="Ketik pesan..." onkeypress="if(event.key==='Enter') sendMessage()" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onclick="sendMessage()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Kirim</button>
+          </div>
+          <div class="flex space-x-4">
+            <button onclick="logout()" class="w-full py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">Logout</button>
+            <button onclick="clearChat()" class="w-full py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition">Clear Chat</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <script>
+      let ws;
+      let token = "";
+      let currentUser = "";
+      
+      window.onload = function() {
+        const savedToken = localStorage.getItem('chatToken');
+        const savedUser = localStorage.getItem('chatUsername');
+        if (savedToken && savedUser) {
+          token = savedToken;
+          currentUser = savedUser;
+          showChat();
+        }
+      };
+      
+      function register() {
+        const username = document.getElementById("username").value;
+        const password = document.getElementById("password").value;
+        
+        if (!username || !password) {
+          alert("Username dan password tidak boleh kosong!");
+          return;
+        }
+        
+        fetch("/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        })
+          .then(res => {
+            if (!res.ok) return res.text().then(text => { throw new Error(text) });
+            return res.json();
+          })
+          .then(data => {
+            alert(data.message || "Registrasi berhasil!");
+            login();
+          })
+          .catch(err => alert("Error: " + err.message));
+      }
+      
+      function login() {
+        const username = document.getElementById("username").value;
+        const password = document.getElementById("password").value;
+        
+        if (!username || !password) {
+          alert("Username dan password tidak boleh kosong!");
+          return;
+        }
+        
+        fetch("/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        })
+          .then(res => {
+            if (!res.ok) return res.text().then(text => { throw new Error(text) });
+            return res.json();
+          })
+          .then(data => {
+            token = data.token;
+            currentUser = data.username;
+            localStorage.setItem('chatToken', token);
+            localStorage.setItem('chatUsername', currentUser);
+            showChat();
+          })
+          .catch(err => alert("Login gagal: " + err.message));
+      }
+      
+      function showChat() {
+        document.getElementById("auth-container").classList.add("hidden");
+        document.getElementById("chat-container").classList.remove("hidden");
+        document.getElementById("status").innerText = "Logged in as: " + currentUser;
+        connectWebSocket();
+      }
+      
+      function logout() {
+        if (ws) ws.close();
+        token = "";
+        currentUser = "";
+        localStorage.removeItem('chatToken');
+        localStorage.removeItem('chatUsername');
+        document.getElementById("auth-container").classList.remove("hidden");
+        document.getElementById("chat-container").classList.add("hidden");
+        document.getElementById("status").innerText = "";
+        document.getElementById("chatbox").innerHTML = "";
+        document.getElementById("online-users").innerHTML = `Pengguna Online: <span>Tidak ada</span>`;
+      }
+      
+      function connectWebSocket() {
+        ws = new WebSocket(`ws://localhost:8080/ws?token=${token}`);
+        
+        ws.onopen = () => {
+          console.log("WebSocket connected");
+        };
+        
+        ws.onmessage = (event) => {
+          const chatbox = document.getElementById("chatbox");
+          const message = JSON.parse(event.data);
+          const timestamp = message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+          
+          if (message.message.startsWith("UPDATE_ONLINE_USERS:")) {
+            const users = message.message.split(":")[1];
+            document.getElementById("online-users").innerHTML = `Pengguna Online: <span class="text-green-600 font-semibold">${users || "Tidak ada"}</span>`;
+          } else {
+            let msgHTML = '';
+            if (message.sender === "System") {
+              msgHTML = `<div class="bg-gray-200 text-gray-700 text-sm py-2 px-4 rounded-full text-center">${message.message}</div>`;
+            } else if (message.sender === currentUser) {
+              msgHTML = `
+                <div class="flex justify-end">
+                  <div class="bg-blue-500 text-white py-2 px-4 rounded-lg max-w-xs">
+                    <strong>${message.sender}</strong>: ${message.message}
+                    <div class="text-xs text-gray-200 mt-1 text-right">${timestamp}</div>
+                  </div>
+                </div>
+              `;
+            } else {
+              msgHTML = `
+                <div class="flex justify-start">
+                  <div class="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg max-w-xs">
+                    <strong>${message.sender}</strong>: ${message.message}
+                    <div class="text-xs text-gray-500 mt-1 text-right">${timestamp}</div>
+                  </div>
+                </div>
+              `;
+            }
+            chatbox.innerHTML += msgHTML;
+            chatbox.scrollTop = chatbox.scrollHeight;
+          }
+        };
+        
+        ws.onclose = () => {
+          document.getElementById("status").innerText = "Logged in as: " + currentUser + " (Disconnected)";
+          setTimeout(connectWebSocket, 5000);
+        };
+        
+        ws.onerror = (error) => {
+          console.error("WebSocket error:", error);
+        };
+      }
+      
+      function sendMessage() {
+        const messageInput = document.getElementById("message");
+        const message = messageInput.value.trim();
+        if (!message) return;
+        
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ message }));
+          messageInput.value = "";
+        } else {
+          alert("Koneksi WebSocket terputus. Mencoba menghubungkan kembali...");
+          connectWebSocket();
+        }
+      }
+      
+      function clearChat() {
+        fetch("/clear-chat", {
+          method: "POST",
+          headers: { "Authorization": token }
+        })
+          .then(response => {
+            if (!response.ok) throw new Error("Failed to clear chat");
+            document.getElementById("chatbox").innerHTML = "";
+          })
+          .catch(error => alert("Error clearing chat: " + error));
+      }
+    </script>
+  </body>
+</html>
